@@ -4,6 +4,7 @@ import Home from './components/Home';
 import VisitorPass from './components/VisitorPass';
 import LoginForm from './components/LoginForm';
 import CreateUserForm from './components/CreateUserForm';
+import AdminControlls from './components/AdminControlls';
 import { RoleProvider } from './context/RoleContext'; // Import RoleProvider
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
           <Route exact path="/create-pass" element={<VisitorPass />} />
           <Route exact path="/login" element={<LoginForm />} />
           <Route exact path="/create-user" element={<CreateUserForm />} />
+          <Route exact path="/admin" element={<AdminControlls />} />
         </Routes>
       </RoleProvider>
     </Router>
