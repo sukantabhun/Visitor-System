@@ -84,8 +84,16 @@ const adminOnly = (req, res, next) => {
 app.post('/register', async (req, res) => {
   const { name, email, password, role } = req.body;
   try {
-    const existingUser = await User.findOne({ $or: [{ name }, { email }] });
-    if (existingUser) return res.status(409).json({ error: 'User with this name or email already exists' });
+    const existingUser = await User.findOne({
+      $or: [
+        { name: { $regex: `^${name}$`, $options: 'i' } },
+        { email: { $regex: `^${email}$`, $options: 'i' } },
+      ],
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ error: 'User with this name or email already exists' });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ name, email, password: hashedPassword, role });
@@ -96,6 +104,8 @@ app.post('/register', async (req, res) => {
     res.status(500).json({ error: 'Failed to register user' });
   }
 });
+
+
 
 // Login User
 app.post('/login', async (req, res) => {
@@ -148,6 +158,26 @@ app.post('/visitor-pass', verifyToken, async (req, res) => {
 });
 
 // Get All Users (Admin-Only)
+
+// Get User by Username
+app.get('/users/:username', verifyToken, async (req, res) => {
+  try {
+    const { username } = req.params;
+    const user = await User.findOne({ name: { $regex: `^${username}$`, $options: 'i' } });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ message: 'User exists', user: { name: user.name, email: user.email } });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+
+
 app.get('/users', verifyToken, adminOnly, async (req, res) => {
   try {
     const users = await User.find({}, '-password');

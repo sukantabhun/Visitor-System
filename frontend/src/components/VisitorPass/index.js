@@ -74,7 +74,10 @@ function VisitorPass() {
     try {
       const response = await fetch('http://localhost:5000/visitor-pass', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${jwtToken}`
+         },
         body: JSON.stringify(formData),
       });
 
