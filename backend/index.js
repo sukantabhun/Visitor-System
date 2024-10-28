@@ -4,11 +4,11 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
-const cloudinary = require('cloudinary').v2; // Import Cloudinary
+const cloudinary = require('cloudinary').v2;
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 5000; // Use PORT from .env
+const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
@@ -33,7 +33,6 @@ const userSchema = new mongoose.Schema({
   password: String,
   role: { type: String, default: 'operator' }, // 'admin' or 'operator'
 });
-
 const User = mongoose.model('User', userSchema);
 
 // Visitor Schema
@@ -47,19 +46,45 @@ const visitorSchema = new mongoose.Schema({
   department: String,
   meetingPurpose: String,
   photo: String,
-  qrData: String, 
+  qrData: String,
   createdAt: { type: Date, default: () => new Date(new Date().setHours(0, 0, 0, 0)) }, // Store only date
 });
-
 const Visitor = mongoose.model('Visitor', visitorSchema);
+
+// Department Schema
+const departmentSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true },
+  createdAt: { type: Date, default: Date.now },
+});
+const Department = mongoose.model('Department', departmentSchema);
+
+// Authentication Middleware
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ message: 'Access denied. No token provided.' });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid token.' });
+  }
+};
 
 // Register Route
 app.post('/register', async (req, res) => {
   const { name, email, password, role } = req.body;
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const user = new User({ name, email, password: hashedPassword, role });
-  await user.save();
-  res.status(201).json({ message: 'User registered successfully' });
+  try {
+    const existingUser = await User.findOne({ $or: [{ name }, { email }] });
+    if (existingUser) return res.status(409).json({ error: 'User with this name or email already exists' });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ name, email, password: hashedPassword, role });
+    await user.save();
+    res.status(201).json({ message: 'User registered successfully' });
+  } catch (error) {
+    console.error('Error registering user:', error);
+    res.status(500).json({ error: 'Failed to register user' });
+  }
 });
 
 // Login Route
@@ -74,58 +99,34 @@ app.post('/login', async (req, res) => {
 });
 
 // Create Visitor Pass Route
-// Create Visitor Pass Route
 app.post('/visitor-pass', async (req, res) => {
   try {
     const {
-      name,
-      mobile,
-      address,
-      idProof,
-      personToMeet,
-      designation,
-      department,
-      meetingPurpose,
-      photo, // Base64 image from frontend
+      name, mobile, address, idProof, personToMeet,
+      designation, department, meetingPurpose, photo,
     } = req.body;
-
-    // Validate photo
-    if (!photo || !photo.startsWith('data:image/')) {
-      return res.status(400).json({ error: 'Invalid image format' });
-    }
-
-    // Upload Base64 image to Cloudinary
+    if (!photo || !photo.startsWith('data:image/')) return res.status(400).json({ error: 'Invalid image format' });
     const uploadResponse = await cloudinary.uploader.upload(photo, {
-      folder: 'visitor_passes', // Organize images in Cloudinary
-      resource_type: 'image',   // Ensure it's treated as an image
+      folder: 'visitor_passes', resource_type: 'image',
     });
-
-    // Create a visitor document with Cloudinary URL
     const visitor = new Visitor({
-      name,
-      mobile,
-      address,
-      idProof,
-      personToMeet,
-      designation,
-      department,
-      meetingPurpose,
-      photo: uploadResponse.secure_url, // Store only the URL
-      createdAt: new Date(), // Use the current date and time
+      name, mobile, address, idProof, personToMeet,
+      designation, department, meetingPurpose,
+      photo: uploadResponse.secure_url,
+      createdAt: new Date(),
     });
-
-    // Save visitor to MongoDB
     await visitor.save();
-
-    res.status(201).json(visitor); // Respond with visitor data
+    res.status(201).json(visitor);
   } catch (error) {
     console.error('Error creating visitor pass:', error);
     res.status(500).json({ error: 'Failed to create visitor pass' });
   }
 });
-app.get('/users', async (req, res) => {
+
+// Get Users
+app.get('/users', verifyToken, async (req, res) => {
   try {
-    const users = await User.find({}, '-password'); // Exclude password from the response
+    const users = await User.find({}, '-password');
     res.status(200).json(users);
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -133,17 +134,13 @@ app.get('/users', async (req, res) => {
   }
 });
 
-
-app.put('/users/:id', async (req, res) => {
+// Update User
+app.put('/users/:id', verifyToken, async (req, res) => {
   const { id } = req.params;
   const { name, password, role } = req.body;
-
   try {
     const updateData = { name, role };
-    if (password) {
-      updateData.password = await bcrypt.hash(password, 10); // Hashing the password
-    }
-
+    if (password) updateData.password = await bcrypt.hash(password, 10);
     const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true });
     res.status(200).json(updatedUser);
   } catch (error) {
@@ -152,51 +149,30 @@ app.put('/users/:id', async (req, res) => {
   }
 });
 
-app.delete('/users/:id', async (req, res) => {
+// Delete User
+app.delete('/users/:id', verifyToken, async (req, res) => {
   const { id } = req.params;
-
   try {
     await User.findByIdAndDelete(id);
-    res.status(204).send(); // No Content response
+    res.status(204).send();
   } catch (error) {
     console.error('Error deleting user:', error);
     res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
-
-
-// Get Visitors Route
-app.get('/visitors', async (req, res) => {
+// Get Visitors
+app.get('/visitors', verifyToken, async (req, res) => {
   try {
     const { date, department } = req.query;
-
-    // Parse the date from the query and find visitors for that day
     const startOfDay = new Date(date);
-    startOfDay.setUTCHours(0, 0, 0, 0); // Start of the day in UTC
-
+    startOfDay.setUTCHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
-    endOfDay.setUTCHours(23, 59, 59, 999); // End of the day in UTC
-
-    // Build the query for finding visitors
-    const query = {
-      createdAt: { $gte: startOfDay, $lte: endOfDay },
-    };
-
-    // If a specific department is provided and is not "All", add it to the query
-    if (department && department !== 'All') {
-      query.department = department; // Assuming 'department' is a field in your Visitor model
-    }
-
-    // Find visitors within the specified date range and department
+    endOfDay.setUTCHours(23, 59, 59, 999);
+    const query = { createdAt: { $gte: startOfDay, $lte: endOfDay } };
+    if (department && department !== 'All') query.department = department;
     const visitors = await Visitor.find(query);
-
-    // If no visitors are found, return an empty array
-    if (!visitors || visitors.length === 0) {
-      return res.status(404).json({ message: 'No visitors found for the specified date and department' });
-    }
-
-    // Respond with the list of visitors, including the photo URL
+    if (!visitors) return res.status(404).json({ message: 'No visitors found' });
     res.status(200).json(visitors);
   } catch (error) {
     console.error('Error retrieving visitors:', error);
@@ -204,6 +180,43 @@ app.get('/visitors', async (req, res) => {
   }
 });
 
+// Department Routes
+app.post('/departments', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admins only.' });
+    const { name } = req.body;
+    const existingDept = await Department.findOne({ name });
+    if (existingDept) return res.status(400).json({ message: 'Department already exists.' });
+    const department = new Department({ name });
+    await department.save();
+    res.status(201).json(department);
+  } catch (error) {
+    console.error('Error creating department:', error);
+    res.status(500).json({ message: 'Failed to create department' });
+  }
+});
+
+app.get('/departments', verifyToken, async (req, res) => {
+  try {
+    const departments = await Department.find();
+    res.status(200).json(departments);
+  } catch (error) {
+    console.error('Error fetching departments:', error);
+    res.status(500).json({ message: 'Failed to fetch departments' });
+  }
+});
+
+app.delete('/departments/:id', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admins only.' });
+    const { id } = req.params;
+    await Department.findByIdAndDelete(id);
+    res.status(200).json({ message: 'Department deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting department:', error);
+    res.status(500).json({ message: 'Failed to delete department' });
+  }
+});
 
 // Start Server
 app.listen(PORT, () => {

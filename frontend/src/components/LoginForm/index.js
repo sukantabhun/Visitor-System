@@ -2,64 +2,60 @@ import React, { useContext, useState } from 'react';
 import Cookies from 'js-cookie';
 import { useNavigate } from 'react-router-dom';
 import { RoleContext } from '../../context/RoleContext'; // Adjust the path as necessary
-import {jwtDecode} from 'jwt-decode'; // Import jwt-decode
+import {jwtDecode} from 'jwt-decode'; // Fix the import statement
 
 const LoginForm = () => {
-  const { setRole } = useContext(RoleContext); // Use the context
+  const { setRole } = useContext(RoleContext);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [showSubmitError, setShowSubmitError] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const navigate = useNavigate();
 
-  const onChangeUsername = event => {
+  const onChangeUsername = (event) => {
     setName(event.target.value);
   };
 
-  const onChangePassword = event => {
+  const onChangePassword = (event) => {
     setPassword(event.target.value);
   };
 
   const onSubmitSuccess = (jwtToken) => {
-    Cookies.set('jwt_token', jwtToken, {
-      expires: 30,
-      path: '/',
-    });
-    
-    // Decode the token to extract the user role
+    Cookies.set('jwt_token', jwtToken, { expires: 30, path: '/' });
+
     const decodedToken = jwtDecode(jwtToken);
-    const userRole = decodedToken.role; // Extract the role from the decoded token
-    setRole(userRole); // Set the role in context
+    const userRole = decodedToken.role;
+    setRole(userRole);
     navigate('/');
   };
 
-  const onSubmitFailure = error => {
+  const onSubmitFailure = (error) => {
     setShowSubmitError(true);
-    setErrorMsg(error);
+    setErrorMsg(error || 'Invalid credentials. Please try again.'); // Provide a fallback message
   };
 
-  const submitForm = async event => {
+  const submitForm = async (event) => {
     event.preventDefault();
     const userDetails = { name, password };
     const url = 'http://localhost:5000/login';
     const options = {
       method: 'POST',
       body: JSON.stringify(userDetails),
-      headers: {
-        'Content-Type': 'application/json', // Make sure to set content type
-      },
+      headers: { 'Content-Type': 'application/json' },
     };
-    
+
     try {
       const response = await fetch(url, options);
       const data = await response.json();
       if (response.ok) {
-        onSubmitSuccess(data.token); // Pass the token to the success function
+        onSubmitSuccess(data.token);
       } else {
+        console.error('Error:', data); // Debugging: Log the error response
         onSubmitFailure(data.error_msg);
       }
     } catch (error) {
-      onSubmitFailure("Network error. Please try again.");
+      console.error('Network Error:', error); // Debugging: Log network errors
+      onSubmitFailure('Network error. Please try again.');
     }
   };
 

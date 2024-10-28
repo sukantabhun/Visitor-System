@@ -1,18 +1,21 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import Webcam from "react-webcam";
 import { useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
+import Cookies from 'js-cookie';
+import axios from 'axios'; // Import axios
 
 function VisitorPass() {
   const [formData, setFormData] = useState({
     name: "",
     mobile: "",
     address: "",
+    idProofType: "",
     idProof: "",
     personToMeet: "",
     designation: "",
-    department: "IT", // Default to IT
+    department: "",
     meetingPurpose: "",
     photo: null,
     createdAt: "",
@@ -20,21 +23,41 @@ function VisitorPass() {
 
   const [passGenerated, setPassGenerated] = useState(false);
   const [qrData, setQrData] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [departments, setDepartments] = useState([]);
   const passRef = useRef();
   const webcamRef = useRef(null);
   const navigate = useNavigate();
+  const jwtToken = Cookies.get('jwt_token');
+
+  // Fetch departments from the backend
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/departments', {
+          headers: { Authorization: `Bearer ${jwtToken}` },
+        });
+        const departmentNames = response.data.map((dept) => dept.name);
+        setDepartments([ ...departmentNames]);
+      } catch (err) {
+        console.error('Error fetching departments:', err);
+      }
+    };
+
+    fetchDepartments();
+  }, [jwtToken]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prevData) => ({ ...prevData, [name]: value }));
   };
 
-  const handleCapture = useCallback(() => {
+  const handleCapture = () => {
     const imageSrc = webcamRef.current.getScreenshot();
     if (imageSrc) {
       setFormData((prevData) => ({ ...prevData, photo: imageSrc }));
     }
-  }, [webcamRef]);
+  };
 
   const handleRecapture = () => {
     setFormData((prevData) => ({ ...prevData, photo: null }));
@@ -45,7 +68,8 @@ function VisitorPass() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.photo) return;
+    if (!formData.photo || isSubmitting) return;
+    setIsSubmitting(true);
 
     try {
       const response = await fetch('http://localhost:5000/visitor-pass', {
@@ -69,6 +93,8 @@ function VisitorPass() {
     } catch (error) {
       console.error('Error:', error);
       alert('Network error. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -97,6 +123,32 @@ function VisitorPass() {
     });
   };
 
+  const validateIDProof = (value) => {
+    const { idProofType } = formData;
+    let regex;
+
+    switch (idProofType) {
+      case "Aadhaar":
+        regex = /^\d{12}$/;
+        break;
+      case "Driving License":
+        regex = /^[A-Z]{2}\d{2}(\d{4})(\d{7})$/;
+        break;
+      case "Passport":
+        regex = /^[A-Z]\d{2} \d{4}\d$/;
+        break;
+      case "PAN":
+        regex = /^[A-Z]{5}\d{4}[A-Z]$/;
+        break;
+      case "Voter ID":
+        regex = /^[A-Z]{3}\d{7}$/;
+        break;
+      default:
+        return false;
+    }
+    return regex.test(value);
+  };
+
   useEffect(() => {
     console.log("QR Data:", qrData);
   }, [qrData]);
@@ -109,15 +161,28 @@ function VisitorPass() {
           <input type="text" name="name" placeholder="Name" value={formData.name} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required />
           <input type="text" name="mobile" placeholder="Mobile No" value={formData.mobile} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required />
           <input type="text" name="address" placeholder="Address" value={formData.address} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required />
-          <input type="text" name="idProof" placeholder="Aadhaar/ID Proof" value={formData.idProof} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required />
+          
+          <select name="idProofType" value={formData.idProofType} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required>
+            <option value="" disabled>Select ID Proof</option>
+            <option value="Aadhaar">Aadhaar Card</option>
+            <option value="Driving License">Driving License</option>
+            <option value="Passport">Passport</option>
+            <option value="PAN">PAN Card</option>
+            <option value="Voter ID">Voter ID</option>
+          </select>
+
+          
+          <input type="text" name="idProof" placeholder="ID Proof Number" value={formData.idProof} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required 
+                 onBlur={(e) => !validateIDProof(e.target.value) && alert(`${formData.idProofType} format is incorrect.`)} />
+
           <input type="text" name="personToMeet" placeholder="Person to Meet" value={formData.personToMeet} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required />
           <input type="text" name="designation" placeholder="Designation" value={formData.designation} onChange={handleChange} className="w-full p-2 mb-4 border rounded" />
 
           <select name="department" value={formData.department} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required>
-            <option value="IT">IT</option>
-            <option value="Mechanical">Mechanical</option>
-            <option value="Civil">Civil</option>
-            <option value="Management">Management</option>
+            <option value="" disabled>Select Department</option>
+            {departments.map(dept => (
+              <option key={dept} value={dept}>{dept}</option>
+            ))}
           </select>
 
           <input type="text" name="meetingPurpose" placeholder="Meeting Purpose" value={formData.meetingPurpose} onChange={handleChange} className="w-full p-2 mb-4 border rounded" required />
@@ -140,8 +205,8 @@ function VisitorPass() {
             </div>
           )}
 
-          <button type="submit" className={`bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 w-full ${!formData.photo ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={!formData.photo}>
-            Generate Pass
+          <button type="submit" className={`bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 w-full ${!formData.photo ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={!formData.photo || isSubmitting}>
+            {isSubmitting ? 'Generating...' : 'Generate Pass'}
           </button>
         </form>
       ) : (
@@ -166,7 +231,7 @@ function VisitorPass() {
             Save as PDF
           </button>
           <button onClick={() => navigate('/')} className="bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 mt-4">
-            Home
+            Back to Home
           </button>
         </>
       )}

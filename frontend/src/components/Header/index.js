@@ -26,8 +26,10 @@ const Header = () => {
 
   return (
     <div className="flex flex-row justify-between w-full p-5 h-20 shadow-[rgba(0,0,15,0.5)_0px_5px_4px_0px]">
-      <div>
-        <h1 className="font-bold text-[30px]">Visitor Details System</h1>
+      
+      <div className="flex flex-row">
+      <img src='https://www.ndmc.gov.in/imgs/932-9329692_ndmc-logo-graphics.png' className="w-12 h-12 mr-2" alt="NDMC"/>
+        <h1 className="font-bold text-[30px]">Reception Management System</h1>
       </div>
       <div>
         {role === "admin" && ( // Show button only if role is admin
