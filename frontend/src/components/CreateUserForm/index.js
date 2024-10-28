@@ -1,21 +1,22 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Cookies from "js-cookie";
 
 const CreateUserForm = () => {
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('operator'); // Default role is 'operator'
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("operator"); // Default role is 'operator'
   const [showSubmitError, setShowSubmitError] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState("");
   const navigate = useNavigate();
-
+  const jwtToken = Cookies.get("jwt_token");
   const onChangeUsername = (event) => setName(event.target.value);
   const onChangePassword = (event) => setPassword(event.target.value);
   const onChangeRole = (event) => setRole(event.target.value);
 
   const onSubmitSuccess = (message) => {
     alert(message); // Show success alert
-    navigate('/'); // Redirect to home
+    navigate("/"); // Redirect to home
   };
 
   const onSubmitFailure = (error) => {
@@ -25,7 +26,7 @@ const CreateUserForm = () => {
 
   const validateForm = () => {
     if (!name || !password) {
-      onSubmitFailure('Username and Password are required.');
+      onSubmitFailure("Username and Password are required.");
       return false;
     }
     return true;
@@ -34,11 +35,12 @@ const CreateUserForm = () => {
   const checkUserExists = async (username) => {
     try {
       const response = await fetch(`http://localhost:5000/users/${username}`, {
-        method: 'GET',
+        method: "GET",
+        headers: { Authorization: `Bearer ${jwtToken}` },
       });
       return response.ok; // If user exists, return true
     } catch (error) {
-      console.error('Error checking user existence:', error);
+      console.error("Error checking user existence:", error);
       return false;
     }
   };
@@ -50,34 +52,40 @@ const CreateUserForm = () => {
 
     const userExists = await checkUserExists(name);
     if (userExists) {
-      onSubmitFailure('Username already exists. Please try a different one.');
+      onSubmitFailure("Username already exists. Please try a different one.");
       return;
     }
 
     const userDetails = { name, password, role };
 
     try {
-      const response = await fetch('http://localhost:5000/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:5000/register", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${jwtToken}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(userDetails),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        onSubmitSuccess('New user created successfully!');
+        onSubmitSuccess("New user created successfully!");
       } else {
         onSubmitFailure(data.error);
       }
     } catch (error) {
-      onSubmitFailure('Failed to create user. Please try again.');
+      onSubmitFailure("Failed to create user. Please try again.");
     }
   };
 
   const renderPasswordField = () => (
     <>
-      <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="password">
+      <label
+        className="block text-gray-700 text-sm font-bold mb-2"
+        htmlFor="password"
+      >
         PASSWORD
       </label>
       <input
@@ -93,7 +101,10 @@ const CreateUserForm = () => {
 
   const renderUsernameField = () => (
     <>
-      <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="username">
+      <label
+        className="block text-gray-700 text-sm font-bold mb-2"
+        htmlFor="username"
+      >
         USERNAME
       </label>
       <input
@@ -116,18 +127,20 @@ const CreateUserForm = () => {
           id="admin"
           name="role"
           value="admin"
-          checked={role === 'admin'}
+          checked={role === "admin"}
           onChange={onChangeRole}
           className="mr-2"
         />
-        <label htmlFor="admin" className="mr-4">Admin</label>
+        <label htmlFor="admin" className="mr-4">
+          Admin
+        </label>
 
         <input
           type="radio"
           id="operator"
           name="role"
           value="operator"
-          checked={role === 'operator'}
+          checked={role === "operator"}
           onChange={onChangeRole}
           className="mr-2"
         />
@@ -139,7 +152,10 @@ const CreateUserForm = () => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-md">
-        <form onSubmit={submitForm} className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+        <form
+          onSubmit={submitForm}
+          className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4"
+        >
           <div className="mb-4">{renderUsernameField()}</div>
           <div className="mb-6">{renderPasswordField()}</div>
           {renderRoleField()}

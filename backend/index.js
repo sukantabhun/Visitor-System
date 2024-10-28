@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -26,16 +25,16 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// User Schema
+// Schemas
 const userSchema = new mongoose.Schema({
   name: String,
   email: String,
   password: String,
   role: { type: String, default: 'operator' }, // 'admin' or 'operator'
 });
+
 const User = mongoose.model('User', userSchema);
 
-// Visitor Schema
 const visitorSchema = new mongoose.Schema({
   name: String,
   mobile: String,
@@ -47,21 +46,23 @@ const visitorSchema = new mongoose.Schema({
   meetingPurpose: String,
   photo: String,
   qrData: String,
-  createdAt: { type: Date, default: () => new Date(new Date().setHours(0, 0, 0, 0)) }, // Store only date
+  createdAt: { type: Date, default: () => new Date(new Date().setHours(0, 0, 0, 0)) },
 });
+
 const Visitor = mongoose.model('Visitor', visitorSchema);
 
-// Department Schema
 const departmentSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   createdAt: { type: Date, default: Date.now },
 });
+
 const Department = mongoose.model('Department', departmentSchema);
 
 // Authentication Middleware
 const verifyToken = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'Access denied. No token provided.' });
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
@@ -71,12 +72,21 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-// Register Route
+// Admin Check Middleware
+const adminOnly = (req, res, next) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admins only.' });
+  next();
+};
+
+// Routes
+
+// Register User
 app.post('/register', async (req, res) => {
   const { name, email, password, role } = req.body;
   try {
     const existingUser = await User.findOne({ $or: [{ name }, { email }] });
     if (existingUser) return res.status(409).json({ error: 'User with this name or email already exists' });
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ name, email, password: hashedPassword, role });
     await user.save();
@@ -87,34 +97,48 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// Login Route
+// Login User
 app.post('/login', async (req, res) => {
   const { name, password } = req.body;
   const user = await User.findOne({ name });
+
   if (!user || !(await bcrypt.compare(password, user.password))) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+
   const token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_SECRET);
   res.json({ token });
 });
 
-// Create Visitor Pass Route
-app.post('/visitor-pass', async (req, res) => {
+// Check Admin Route
+app.get('/check-admin', verifyToken, (req, res) => {
+  const isAdmin = req.user.role === 'admin';
+  res.json({ isAdmin });
+});
+
+// Create Visitor Pass
+app.post('/visitor-pass', verifyToken, async (req, res) => {
   try {
     const {
       name, mobile, address, idProof, personToMeet,
       designation, department, meetingPurpose, photo,
     } = req.body;
-    if (!photo || !photo.startsWith('data:image/')) return res.status(400).json({ error: 'Invalid image format' });
+
+    if (!photo || !photo.startsWith('data:image/')) {
+      return res.status(400).json({ error: 'Invalid image format' });
+    }
+
     const uploadResponse = await cloudinary.uploader.upload(photo, {
       folder: 'visitor_passes', resource_type: 'image',
     });
+
     const visitor = new Visitor({
       name, mobile, address, idProof, personToMeet,
       designation, department, meetingPurpose,
       photo: uploadResponse.secure_url,
       createdAt: new Date(),
     });
+
     await visitor.save();
     res.status(201).json(visitor);
   } catch (error) {
@@ -123,8 +147,8 @@ app.post('/visitor-pass', async (req, res) => {
   }
 });
 
-// Get Users
-app.get('/users', verifyToken, async (req, res) => {
+// Get All Users (Admin-Only)
+app.get('/users', verifyToken, adminOnly, async (req, res) => {
   try {
     const users = await User.find({}, '-password');
     res.status(200).json(users);
@@ -138,9 +162,11 @@ app.get('/users', verifyToken, async (req, res) => {
 app.put('/users/:id', verifyToken, async (req, res) => {
   const { id } = req.params;
   const { name, password, role } = req.body;
+
   try {
     const updateData = { name, role };
     if (password) updateData.password = await bcrypt.hash(password, 10);
+
     const updatedUser = await User.findByIdAndUpdate(id, updateData, { new: true });
     res.status(200).json(updatedUser);
   } catch (error) {
@@ -149,11 +175,10 @@ app.put('/users/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Delete User
-app.delete('/users/:id', verifyToken, async (req, res) => {
-  const { id } = req.params;
+// Delete User (Admin-Only)
+app.delete('/users/:id', verifyToken, adminOnly, async (req, res) => {
   try {
-    await User.findByIdAndDelete(id);
+    await User.findByIdAndDelete(req.params.id);
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting user:', error);
@@ -161,32 +186,14 @@ app.delete('/users/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Get Visitors
-app.get('/visitors', verifyToken, async (req, res) => {
-  try {
-    const { date, department } = req.query;
-    const startOfDay = new Date(date);
-    startOfDay.setUTCHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setUTCHours(23, 59, 59, 999);
-    const query = { createdAt: { $gte: startOfDay, $lte: endOfDay } };
-    if (department && department !== 'All') query.department = department;
-    const visitors = await Visitor.find(query);
-    if (!visitors) return res.status(404).json({ message: 'No visitors found' });
-    res.status(200).json(visitors);
-  } catch (error) {
-    console.error('Error retrieving visitors:', error);
-    res.status(500).json({ error: 'Failed to retrieve visitors' });
-  }
-});
-
 // Department Routes
-app.post('/departments', verifyToken, async (req, res) => {
+app.post('/departments', verifyToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admins only.' });
     const { name } = req.body;
     const existingDept = await Department.findOne({ name });
+
     if (existingDept) return res.status(400).json({ message: 'Department already exists.' });
+
     const department = new Department({ name });
     await department.save();
     res.status(201).json(department);
@@ -206,11 +213,9 @@ app.get('/departments', verifyToken, async (req, res) => {
   }
 });
 
-app.delete('/departments/:id', verifyToken, async (req, res) => {
+app.delete('/departments/:id', verifyToken, adminOnly, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admins only.' });
-    const { id } = req.params;
-    await Department.findByIdAndDelete(id);
+    await Department.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: 'Department deleted successfully' });
   } catch (error) {
     console.error('Error deleting department:', error);

@@ -16,7 +16,7 @@ const Header = () => {
   };
 
   const handleLogout = () => {
-    Cookies.remove("jwt-token");
+    Cookies.remove("jwt_token");
     navigate("/login");
   };
 

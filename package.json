@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "qrcode": "^1.5.4",
-    "react-webcam": "^7.2.0"
-  }
-}
